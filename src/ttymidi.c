@@ -39,6 +39,7 @@
 
 #define MAX_DEV_STR_LEN               32
 #define MAX_MSG_SIZE                1024
+#define RTPRIO_DEFAULT                80
 
 /* import ioctl definition here, as we can't include both "sys/ioctl.h" and "asm/termios.h" */
 extern int ioctl (int __fd, unsigned long int __request, ...) __THROW;
@@ -61,6 +62,7 @@ static struct argp_option options[] =
 	{"printonly"    , 'p', 0     , 0, "Super debugging: Print values read from serial -- and do nothing else", 0 },
 #endif
 	{"name"		, 'n', "NAME", 0, "Name of the JACK client. Default = ttymidi", 0 },
+    {"rtprio"		, 'r', "RTPRIO", 0, "Real-time priority of the JACK client. Default = 80, range = 20-99", 0 },
 	{ 0 }
 };
 
@@ -73,6 +75,7 @@ typedef struct _arguments
 	char serialdevice[MAX_DEV_STR_LEN];
 	int  baudrate;
 	char name[MAX_DEV_STR_LEN];
+    int rtprio;
 } arguments_t;
 
 typedef struct _jackdata
@@ -103,6 +106,7 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
 	   know is a pointer to our arguments structure. */
 	arguments_t *arguments = state->input;
 	int baud_temp;
+    int rtprio_temp;
 
 	switch (key)
 	{
@@ -132,6 +136,22 @@ static error_t parse_opt (int key, char *arg, struct argp_state *state)
 				exit(1);
 			}
 			arguments->baudrate = baud_temp;
+			break;
+        case 'r':
+			if (arg == NULL) break;
+			errno = 0;
+			rtprio_temp = strtol(arg, NULL, 0);
+			if (errno == EINVAL || errno == ERANGE)
+			{
+				printf("Real-time priority %s is invalid.\n",arg);
+				exit(1);
+			}
+            if (rtprio_temp>=100 || rtprio_temp<=20)
+            {
+                printf("Real-time priority %s out of range default to %d.\n",arg,RTPRIO_DEFAULT);
+                rtprio_temp = RTPRIO_DEFAULT;
+            }
+			arguments->rtprio = rtprio_temp;
 			break;
 		case ARGP_KEY_ARG:
 		case ARGP_KEY_END:
@@ -768,7 +788,7 @@ static bool _ttymidi_init(bool exit_on_failure, jack_client_t* client)
 
         struct sched_param rt_param;
         memset(&rt_param, 0, sizeof(rt_param));
-        rt_param.sched_priority = 80;
+        rt_param.sched_priority = arguments.rtprio;
 
         pthread_attr_setschedparam(&attributes, &rt_param);
 
